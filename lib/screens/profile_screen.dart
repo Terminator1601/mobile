@@ -31,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController _nameCtrl;
   late String _gender;
   List<Event> _userEvents = [];
+  UserStats? _stats;
 
   @override
   void initState() {
@@ -39,6 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _nameCtrl = TextEditingController(text: user?.name ?? '');
     _gender = user?.gender ?? 'other';
     _loadUserEvents();
+    _loadStats();
   }
 
   Future<void> _loadUserEvents() async {
@@ -58,9 +60,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {}
   }
 
+  Future<void> _loadStats() async {
+    try {
+      final stats = await _userService.getUserStats();
+      if (mounted) setState(() => _stats = stats);
+    } catch (_) {}
+  }
+
   Future<void> _refresh() async {
     await context.read<AppState>().refreshUser();
     await _loadUserEvents();
+    await _loadStats();
   }
 
   @override
@@ -109,6 +119,149 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) setState(() => _saving = false);
   }
 
+  void _showSettings() {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Settings',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 24),
+              _settingsItem(
+                icon: Icons.info_outline,
+                title: 'About',
+                subtitle: 'Event Explorer v1.0.0',
+                onTap: () => _showAboutDialog(),
+              ),
+              const Divider(height: 1),
+              _settingsItem(
+                icon: Icons.privacy_tip_outlined,
+                title: 'Privacy Policy',
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Privacy Policy coming soon')),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _settingsItem(
+                icon: Icons.description_outlined,
+                title: 'Terms of Service',
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Terms of Service coming soon')),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _settingsItem(
+                icon: Icons.logout,
+                title: 'Logout',
+                iconColor: Colors.red,
+                titleColor: Colors.red,
+                onTap: () {
+                  Navigator.pop(context);
+                  context.read<AppState>().logout();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _settingsItem({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Color? iconColor,
+    Color? titleColor,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: iconColor ?? theme.colorScheme.primary),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: FontWeight.w500,
+          color: titleColor,
+        ),
+      ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          : null,
+      trailing: Icon(
+        Icons.chevron_right,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+      onTap: onTap,
+    );
+  }
+
+  void _showAboutDialog() {
+    Navigator.pop(context);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Event Explorer'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Version 1.0.0'),
+            SizedBox(height: 12),
+            Text(
+              'Discover and join events happening around you. '
+              'Create your own events and connect with people who share your interests.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AppState>().currentUser;
@@ -128,12 +281,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           SliverToBoxAdapter(child: _gradientHeader(context)),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               child: Column(
                 children: [
-                  Transform.translate(
-                    offset: const Offset(0, -40),
-                    child: GlassCard(
+                  GlassCard(
                       padding: const EdgeInsets.all(24),
                       child: Column(
                         children: [
@@ -273,7 +424,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Row(
                               children: [
                                 Expanded(child: _statCard(
-                                  '0',
+                                  '${_stats?.eventsCreated ?? 0}',
                                   'Events Created',
                                   [
                                     kGradientPurple.withValues(alpha: 0.15),
@@ -283,7 +434,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 )),
                                 const SizedBox(width: 12),
                                 Expanded(child: _statCard(
-                                  '0',
+                                  '${_stats?.eventsAttended ?? 0}',
                                   'Events Attended',
                                   [
                                     kGradientPink.withValues(alpha: 0.15),
@@ -306,28 +457,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
-                  ),
 
                   if (_userEvents.isNotEmpty && !_editing) ...[
+                    const SizedBox(height: 20),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: Transform.translate(
-                        offset: const Offset(0, -24),
-                        child: Text('My Upcoming Events',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold)),
-                      ),
+                      child: Text('My Upcoming Events',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold)),
                     ),
-                    Transform.translate(
-                      offset: const Offset(0, -12),
-                      child: Column(
-                        children: _userEvents
-                            .map((e) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _compactEventCard(context, e),
-                                ))
-                            .toList(),
-                      ),
+                    const SizedBox(height: 12),
+                    Column(
+                      children: _userEvents
+                          .map((e) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: _compactEventCard(context, e),
+                              ))
+                          .toList(),
                     ),
                   ],
                 ],
@@ -342,7 +488,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _gradientHeader(BuildContext context) {
     return Container(
-      height: 160 + MediaQuery.of(context).padding.top,
+      height: 140 + MediaQuery.of(context).padding.top,
       decoration: const BoxDecoration(gradient: kGradient),
       child: SafeArea(
         child: Padding(
@@ -355,7 +501,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Row(
                   children: [
-                    _headerButton(Icons.settings, () {}),
+                    _headerButton(Icons.settings, _showSettings),
                     const SizedBox(width: 8),
                     _headerButton(
                         Icons.logout, () => context.read<AppState>().logout()),

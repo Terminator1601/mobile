@@ -12,6 +12,7 @@ import '../services/event_service.dart';
 import '../services/geocoding_service.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/event_card.dart';
+import '../widgets/filter_bottom_sheet.dart';
 import 'event_detail_screen.dart';
 import 'create_event_screen.dart';
 
@@ -19,10 +20,10 @@ class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
   @override
-  State<MapScreen> createState() => _MapScreenState();
+  MapScreenState createState() => MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   final EventService _eventService = EventService();
   final GeocodingService _geocodingService = GeocodingService();
@@ -42,6 +43,7 @@ class _MapScreenState extends State<MapScreen> {
   List<PlaceResult> _searchResults = [];
   Timer? _searchDebounce;
   Marker? _searchMarker;
+  EventFilters _filters = const EventFilters();
 
   @override
   void initState() {
@@ -68,7 +70,7 @@ class _MapScreenState extends State<MapScreen> {
         _startTracking();
       }
     } catch (_) {}
-    await _loadEvents();
+    await loadEvents();
   }
 
   void _startTracking() {
@@ -94,7 +96,7 @@ class _MapScreenState extends State<MapScreen> {
         );
         if (dist > 500) {
           _center = newPos;
-          _loadEvents();
+          loadEvents();
         }
       }
     });
@@ -108,20 +110,61 @@ class _MapScreenState extends State<MapScreen> {
     );
     _center = userLatLng;
     _mapController.move(userLatLng, 15.0);
-    _loadEvents();
+    loadEvents();
   }
 
-  Future<void> _loadEvents() async {
+  Future<void> refresh() => loadEvents();
+
+  Future<void> loadEvents() async {
     setState(() => _loading = true);
     _lastEventLoadCenter = _center;
     try {
       _events = await _eventService.getNearbyEvents(
         lat: _center.latitude,
         lng: _center.longitude,
+        radius: _filters.radius,
+        interestTag: _filters.category,
       );
       _buildMarkers();
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
+  }
+
+  void _openFilters() {
+    FilterBottomSheet.show(
+      context: context,
+      initialFilters: _filters,
+      onApply: (filters) {
+        setState(() => _filters = filters);
+        loadEvents();
+      },
+    );
+  }
+
+  List<Event> _applyTimeFilter(List<Event> events) {
+    final now = DateTime.now();
+    switch (_filters.timeFilter) {
+      case 'live':
+        return events.where((e) => e.isLive).toList();
+      case 'upcoming':
+        return events.where((e) => e.isUpcoming).toList();
+      case 'today':
+        return events.where((e) {
+          final start = e.startTime.toLocal();
+          return start.year == now.year &&
+              start.month == now.month &&
+              start.day == now.day;
+        }).toList();
+      case 'this_week':
+        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        final weekEnd = weekStart.add(const Duration(days: 7));
+        return events.where((e) {
+          final start = e.startTime.toLocal();
+          return start.isAfter(weekStart) && start.isBefore(weekEnd);
+        }).toList();
+      default:
+        return events;
+    }
   }
 
   void _buildMarkers() {
@@ -186,14 +229,14 @@ class _MapScreenState extends State<MapScreen> {
     });
     _searchFocusNode.unfocus();
     _mapController.move(placeLatLng, 14.0);
-    _loadEvents();
+    loadEvents();
   }
 
   void _openCreate() async {
     final created = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => CreateEventScreen(initialPosition: _center),
     ));
-    if (created == true) _loadEvents();
+    if (created == true) loadEvents();
   }
 
   @override
@@ -208,8 +251,9 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final liveEvents = _events.where((e) => e.isLive).toList();
-    final upcomingEvents = _events.where((e) => !e.isLive).toList();
+    final filteredEvents = _applyTimeFilter(_events);
+    final liveEvents = filteredEvents.where((e) => e.isLive).toList();
+    final upcomingEvents = filteredEvents.where((e) => !e.isLive).toList();
 
     return Stack(
       children: [
@@ -228,7 +272,7 @@ class _MapScreenState extends State<MapScreen> {
               if ((_center.latitude - newCenter.latitude).abs() > 0.01 ||
                   (_center.longitude - newCenter.longitude).abs() > 0.01) {
                 _center = newCenter;
-                _loadEvents();
+                loadEvents();
               }
             },
           ),
@@ -356,12 +400,16 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
 
-        _buildBottomSheet(context, liveEvents, upcomingEvents),
+        _buildBottomSheet(context, liveEvents, upcomingEvents, filteredEvents),
       ],
     );
   }
 
   Widget _buildCollapsedSearch() {
+    final hasActiveFilters = _filters.category != null ||
+        _filters.timeFilter != 'all' ||
+        _filters.radius != 50000;
+
     return Row(
       key: const ValueKey('collapsed'),
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -383,12 +431,41 @@ class _MapScreenState extends State<MapScreen> {
             ],
           ),
         ),
-        GlassCard(
-          onTap: _toggleSearch,
-          padding: const EdgeInsets.all(10),
-          child: Icon(Icons.search,
-              size: 20,
-              color: Theme.of(context).colorScheme.onSurface),
+        Row(
+          children: [
+            Stack(
+              children: [
+                GlassCard(
+                  onTap: _openFilters,
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(Icons.tune,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.onSurface),
+                ),
+                if (hasActiveFilters)
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: kGradientPurple,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 8),
+            GlassCard(
+              onTap: _toggleSearch,
+              padding: const EdgeInsets.all(10),
+              child: Icon(Icons.search,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurface),
+            ),
+          ],
         ),
       ],
     );
@@ -499,6 +576,7 @@ class _MapScreenState extends State<MapScreen> {
     BuildContext context,
     List<Event> liveEvents,
     List<Event> upcomingEvents,
+    List<Event> filteredEvents,
   ) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -525,7 +603,7 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
           child: RefreshIndicator(
-            onRefresh: _loadEvents,
+            onRefresh: loadEvents,
             child: ListView(
               controller: scrollController,
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
@@ -546,7 +624,7 @@ class _MapScreenState extends State<MapScreen> {
                   style: theme.textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 2),
-              Text('${_events.length} events happening around you',
+              Text('${filteredEvents.length} events happening around you',
                   style: TextStyle(
                       fontSize: 13,
                       color: theme.colorScheme.onSurfaceVariant)),

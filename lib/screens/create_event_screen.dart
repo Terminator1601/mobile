@@ -158,29 +158,42 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 
   Future<void> _pickEventMedia() async {
-    if (_mediaItems.length >= _maxMediaFiles) {
+    final remainingSlots = _maxMediaFiles - _mediaItems.length;
+    if (remainingSlots <= 0) {
       _showError('You can upload up to $_maxMediaFiles files.');
       return;
     }
 
-    final file = await _picker.pickMedia();
-    if (file == null || !mounted) return;
+    final files = await _picker.pickMultipleMedia(limit: remainingSlots);
+    if (files.isEmpty || !mounted) return;
 
-    final extension = _fileExtension(file.name);
-    if (!_allowedMediaExtensions.contains(extension)) {
-      _showError('Only JPG, PNG, MP4, and MOV files are allowed.');
-      return;
+    final validFiles = <XFile>[];
+    for (final file in files) {
+      final extension = _fileExtension(file.name);
+      if (!_allowedMediaExtensions.contains(extension)) {
+        _showError('${file.name}: Only JPG, PNG, MP4, and MOV files are allowed.');
+        continue;
+      }
+
+      final fileSize = await File(file.path).length();
+      if (fileSize > _maxMediaSizeBytes) {
+        _showError('${file.name}: File must be 20MB or less.');
+        continue;
+      }
+
+      validFiles.add(file);
     }
 
-    final fileSize = await File(file.path).length();
-    if (fileSize > _maxMediaSizeBytes) {
-      _showError('Each file must be 20MB or less.');
-      return;
-    }
+    if (validFiles.isEmpty) return;
 
-    final mediaItem = _MediaUploadItem(file: file, isUploading: true);
-    setState(() => _mediaItems.add(mediaItem));
-    await _uploadMediaItem(mediaItem);
+    final newItems = validFiles
+        .map((file) => _MediaUploadItem(file: file, isUploading: true))
+        .toList();
+    setState(() => _mediaItems.addAll(newItems));
+
+    for (final item in newItems) {
+      _uploadMediaItem(item);
+    }
   }
 
   void _removeMediaAt(int index) {

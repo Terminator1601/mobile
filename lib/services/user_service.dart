@@ -50,4 +50,23 @@ class UserService {
     );
     return User.fromJson(response.data);
   }
+
+  Future<UserStats> getUserStats() async {
+    final response = await _client.dio.get('/users/me/stats');
+    return UserStats.fromJson(response.data);
+  }
+}
+
+class UserStats {
+  final int eventsCreated;
+  final int eventsAttended;
+
+  UserStats({required this.eventsCreated, required this.eventsAttended});
+
+  factory UserStats.fromJson(Map<String, dynamic> json) {
+    return UserStats(
+      eventsCreated: json['events_created'] ?? 0,
+      eventsAttended: json['events_attended'] ?? 0,
+    );
+  }
 }

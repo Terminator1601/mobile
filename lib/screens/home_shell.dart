@@ -16,19 +16,28 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
 
+  final GlobalKey<MapScreenState> _mapKey = GlobalKey<MapScreenState>();
+  final GlobalKey<ExploreScreenState> _exploreKey = GlobalKey<ExploreScreenState>();
+
   late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
     _screens = [
-      const MapScreen(),
-      const ExploreScreen(),
+      MapScreen(key: _mapKey),
+      ExploreScreen(key: _exploreKey),
       CreateEventScreen(
-        onCreated: () => setState(() => _currentIndex = 0),
+        onCreated: _onEventCreated,
       ),
       const ProfileScreen(),
     ];
+  }
+
+  void _onEventCreated() {
+    _mapKey.currentState?.refresh();
+    _exploreKey.currentState?.refresh();
+    setState(() => _currentIndex = 0);
   }
 
   @override

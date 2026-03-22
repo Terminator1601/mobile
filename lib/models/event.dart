@@ -46,6 +46,11 @@ class Event {
     return startTime.isBefore(now) && endTime.isAfter(now);
   }
 
+  bool get isUpcoming {
+    final now = DateTime.now().toUtc();
+    return startTime.isAfter(now);
+  }
+
   factory Event.fromJson(Map<String, dynamic> json) {
     final parsedMediaUrls = _parseMediaUrls(json);
 

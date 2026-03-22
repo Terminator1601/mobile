@@ -19,7 +19,7 @@ class EventService {
   Future<List<Event>> getNearbyEvents({
     required double lat,
     required double lng,
-    double radius = 5000,
+    double radius = 50000,
     String? interestTag,
   }) async {
     final params = <String, dynamic>{

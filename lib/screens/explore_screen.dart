@@ -9,6 +9,7 @@ import '../widgets/glass_card.dart';
 import '../widgets/category_chips.dart';
 import '../widgets/event_card.dart';
 import '../widgets/avatar_stack.dart';
+import '../widgets/filter_bottom_sheet.dart';
 import 'event_detail_screen.dart';
 
 const _categories = [
@@ -19,21 +20,24 @@ class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
 
   @override
-  State<ExploreScreen> createState() => _ExploreScreenState();
+  ExploreScreenState createState() => ExploreScreenState();
 }
 
-class _ExploreScreenState extends State<ExploreScreen> {
+class ExploreScreenState extends State<ExploreScreen> {
   final EventService _eventService = EventService();
   final TextEditingController _searchCtrl = TextEditingController();
 
   List<Event> _events = [];
   String _selectedCategory = 'All';
   bool _loading = true;
+  EventFilters _filters = const EventFilters();
 
   @override
   void initState() {
     super.initState();
-    _loadEvents();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadEvents();
+    });
   }
 
   @override
@@ -42,7 +46,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
     super.dispose();
   }
 
-  Future<void> _loadEvents() async {
+  Future<void> refresh() => loadEvents();
+
+  Future<void> loadEvents() async {
     setState(() => _loading = true);
     try {
       double lat = 37.7749, lng = -122.4194;
@@ -55,10 +61,30 @@ class _ExploreScreenState extends State<ExploreScreen> {
       _events = await _eventService.getNearbyEvents(
         lat: lat,
         lng: lng,
-        radius: 15000,
+        radius: _filters.radius,
+        interestTag: _filters.category,
       );
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
+  }
+
+  void _openFilters() {
+    FilterBottomSheet.show(
+      context: context,
+      initialFilters: _filters,
+      onApply: (filters) {
+        setState(() {
+          _filters = filters;
+          if (filters.category != null) {
+            _selectedCategory = filters.category!.substring(0, 1).toUpperCase() +
+                filters.category!.substring(1);
+          } else {
+            _selectedCategory = 'All';
+          }
+        });
+        loadEvents();
+      },
+    );
   }
 
   List<Event> get _filteredEvents {
@@ -76,10 +102,51 @@ class _ExploreScreenState extends State<ExploreScreen> {
           .where((e) => e.title.toLowerCase().contains(q))
           .toList();
     }
+    list = _applyTimeFilter(list);
+    list = _applyDistanceFilter(list);
     return list;
   }
 
+  List<Event> _applyDistanceFilter(List<Event> events) {
+    return events.where((e) {
+      if (e.distanceMeters == null) return true;
+      return e.distanceMeters! <= _filters.radius;
+    }).toList();
+  }
+
+  List<Event> _applyTimeFilter(List<Event> events) {
+    final now = DateTime.now();
+    switch (_filters.timeFilter) {
+      case 'live':
+        return events.where((e) => e.isLive).toList();
+      case 'upcoming':
+        return events.where((e) => e.isUpcoming).toList();
+      case 'today':
+        return events.where((e) {
+          final start = e.startTime.toLocal();
+          return start.year == now.year &&
+              start.month == now.month &&
+              start.day == now.day;
+        }).toList();
+      case 'this_week':
+        final weekStart = now.subtract(Duration(days: now.weekday - 1));
+        final weekEnd = weekStart.add(const Duration(days: 7));
+        return events.where((e) {
+          final start = e.startTime.toLocal();
+          return start.isAfter(weekStart) && start.isBefore(weekEnd);
+        }).toList();
+      default:
+        return events;
+    }
+  }
+
   List<Event> get _trending => _events.take(3).toList();
+
+  List<Event> get _upcomingEvents {
+    final upcoming = _events.where((e) => e.isUpcoming).toList();
+    upcoming.sort((a, b) => a.startTime.compareTo(b.startTime));
+    return upcoming.take(5).toList();
+  }
 
   void _openDetail(Event event) {
     Navigator.of(context).push(MaterialPageRoute(
@@ -93,13 +160,15 @@ class _ExploreScreenState extends State<ExploreScreen> {
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadEvents,
+          onRefresh: loadEvents,
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(child: _header(theme)),
               SliverToBoxAdapter(child: _categoryBar()),
               if (!_loading && _trending.isNotEmpty)
                 SliverToBoxAdapter(child: _trendingSection(theme)),
+              if (!_loading && _upcomingEvents.isNotEmpty)
+                SliverToBoxAdapter(child: _upcomingSection(theme)),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
@@ -181,7 +250,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 ),
                 child: IconButton(
                   icon: const Icon(Icons.tune, color: Colors.white, size: 20),
-                  onPressed: () {},
+                  onPressed: _openFilters,
                 ),
               ),
             ],
@@ -227,6 +296,37 @@ class _ExploreScreenState extends State<ExploreScreen> {
             itemCount: _trending.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (_, i) => _trendingCard(theme, _trending[i], dateFmt),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _upcomingSection(ThemeData theme) {
+    final dateFmt = DateFormat('h:mm a');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+          child: Row(
+            children: [
+              const Icon(Icons.schedule, color: kGradientPurple, size: 20),
+              const SizedBox(width: 6),
+              Text('Upcoming',
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 220,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _upcomingEvents.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) => _trendingCard(theme, _upcomingEvents[i], dateFmt),
           ),
         ),
       ],

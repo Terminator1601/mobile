@@ -113,11 +113,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               SliverToBoxAdapter(child: _heroImage(ev, theme)),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                  child: Transform.translate(
-                    offset: const Offset(0, -32),
-                    child: Column(
-                      children: [
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                  child: Column(
+                    children: [
                       GlassCard(
                         padding: const EdgeInsets.all(20),
                         child: Column(
@@ -351,8 +349,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           ],
                         ),
                       ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -367,7 +364,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Widget _heroImage(Event ev, ThemeData theme) {
-    final height = MediaQuery.of(context).size.height * 0.42;
+    final height = MediaQuery.of(context).size.height * 0.38;
     return SizedBox(
       height: height,
       child: Stack(
