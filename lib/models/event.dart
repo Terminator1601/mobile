@@ -17,6 +17,7 @@ class Event {
   final int participantCount;
   final double? distanceMeters;
   final String? coverImage;
+  final List<String> mediaUrls;
   final bool isUserParticipant;
 
   Event({
@@ -36,6 +37,7 @@ class Event {
     this.participantCount = 0,
     this.distanceMeters,
     this.coverImage,
+    this.mediaUrls = const [],
     this.isUserParticipant = false,
   });
 
@@ -45,6 +47,16 @@ class Event {
   }
 
   factory Event.fromJson(Map<String, dynamic> json) {
+    final parsedMediaUrls = _parseMediaUrls(json);
+
+    final parsedCoverImage =
+        (json['cover_image'] ?? json['coverImage']) as String?;
+
+    final fallbackCoverImage = parsedMediaUrls.firstWhere(
+      _isImageUrl,
+      orElse: () => parsedMediaUrls.isNotEmpty ? parsedMediaUrls.first : '',
+    );
+
     return Event(
       id: json['id'],
       title: json['title'],
@@ -64,8 +76,58 @@ class Event {
       distanceMeters: json['distance_meters'] != null
           ? (json['distance_meters'] as num).toDouble()
           : null,
-      coverImage: json['cover_image'],
+      coverImage: (parsedCoverImage != null && parsedCoverImage.isNotEmpty)
+          ? parsedCoverImage
+          : (fallbackCoverImage.isNotEmpty ? fallbackCoverImage : null),
+      mediaUrls: parsedMediaUrls,
       isUserParticipant: json['is_user_participant'] ?? false,
     );
+  }
+
+  static List<String> _parseMediaUrls(Map<String, dynamic> json) {
+    final urls = <String>[];
+
+    void addUrl(dynamic value) {
+      if (value is String && value.isNotEmpty) {
+        urls.add(value);
+      }
+    }
+
+    void addFromList(dynamic source) {
+      if (source is List) {
+        for (final item in source) {
+          if (item is String) {
+            addUrl(item);
+          } else if (item is Map<String, dynamic>) {
+            addUrl(item['url']);
+            addUrl(item['secure_url']);
+            addUrl(item['media_url']);
+            addUrl(item['file_url']);
+          }
+        }
+      }
+    }
+
+    addFromList(json['media_urls']);
+    addFromList(json['mediaUrls']);
+    addFromList(json['media']);
+    addFromList(json['attachments']);
+
+    final deduped = <String>[];
+    final seen = <String>{};
+    for (final url in urls) {
+      if (seen.add(url)) {
+        deduped.add(url);
+      }
+    }
+    return deduped;
+  }
+
+  static bool _isImageUrl(String url) {
+    final clean = url.split('?').first.toLowerCase();
+    return clean.endsWith('.jpg') ||
+        clean.endsWith('.jpeg') ||
+        clean.endsWith('.png') ||
+        clean.endsWith('.webp');
   }
 }

@@ -54,6 +54,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  Future<void> _openMediaUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _join() async {
     setState(() => _joining = true);
     try {
@@ -258,6 +265,29 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           ),
                         ),
                       ],
+                      if (ev.mediaUrls.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        GlassCard(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Media',
+                                  style: theme.textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 12),
+                              Column(
+                                children: ev.mediaUrls
+                                    .map((url) => Padding(
+                                          padding: const EdgeInsets.only(bottom: 10),
+                                          child: _mediaTile(url, theme),
+                                        ))
+                                    .toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
 
                       GlassCard(
@@ -427,6 +457,76 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       ),
       child: const Icon(Icons.event, size: 60, color: Colors.white38),
     );
+  }
+
+  Widget _mediaTile(String url, ThemeData theme) {
+    final isVideo = _isVideoUrl(url);
+    if (!isVideo) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Image.network(
+            url,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _mediaErrorTile(theme),
+          ),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => _openMediaUrl(url),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              kGradientPurple.withValues(alpha: 0.25),
+              kGradientPink.withValues(alpha: 0.25),
+            ],
+          ),
+          border: Border.all(color: theme.colorScheme.outline),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.play_circle_fill, size: 36, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Video uploaded. Tap to play',
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mediaErrorTile(ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+      ),
+      child: Center(
+        child: Text(
+          'Unable to load media',
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+
+  bool _isVideoUrl(String url) {
+    final clean = url.split('?').first.toLowerCase();
+    return clean.endsWith('.mp4') || clean.endsWith('.mov');
   }
 
   Widget _circleButton(IconData icon, VoidCallback onTap) {

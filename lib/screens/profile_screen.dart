@@ -27,6 +27,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   bool _editing = false;
   bool _saving = false;
+  bool _uploadingImage = false;
   late TextEditingController _nameCtrl;
   late String _gender;
   List<Event> _userEvents = [];
@@ -71,13 +72,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _pickImage() async {
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file == null) return;
-    if (mounted) {
+
+    setState(() => _uploadingImage = true);
+    try {
+      await _userService.uploadProfilePicture(file);
+      await context.read<AppState>().refreshUser();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text(
-                'Image selected. In production this uploads to cloud storage.')),
+        const SnackBar(content: Text('Profile picture updated')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: Colors.red),
       );
     }
+    if (mounted) setState(() => _uploadingImage = false);
   }
 
   Future<void> _save() async {
@@ -158,8 +168,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     gradient: kGradientPurplePink,
                                     shape: BoxShape.circle,
                                   ),
-                                  child: const Icon(Icons.edit,
-                                      size: 16, color: Colors.white),
+                                  child: _uploadingImage
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(9),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(Icons.edit,
+                                          size: 16, color: Colors.white),
                                 ),
                               ),
                             ],

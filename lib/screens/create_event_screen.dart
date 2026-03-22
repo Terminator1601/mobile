@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -18,10 +19,39 @@ import '../widgets/category_chips.dart';
 const _categories = [
   'Party', 'Music', 'Art', 'Food', 'Sports', 'Wellness', 'Networking', 'Other'
 ];
+const int _maxMediaFiles = 3;
+const int _maxMediaSizeBytes = 20 * 1024 * 1024;
+const Set<String> _allowedMediaExtensions = {
+  'jpg',
+  'jpeg',
+  'png',
+  'mp4',
+  'mov',
+};
+
+class _MediaUploadItem {
+  final XFile file;
+  bool isUploading;
+  String? uploadedUrl;
+  String? error;
+
+  _MediaUploadItem({
+    required this.file,
+    this.isUploading = false,
+    this.uploadedUrl,
+    this.error,
+  });
+}
 
 class CreateEventScreen extends StatefulWidget {
   final LatLng? initialPosition;
-  const CreateEventScreen({super.key, this.initialPosition});
+  final VoidCallback? onCreated;
+
+  const CreateEventScreen({
+    super.key,
+    this.initialPosition,
+    this.onCreated,
+  });
 
   @override
   State<CreateEventScreen> createState() => _CreateEventScreenState();
@@ -45,7 +75,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   DateTime? _endTime;
   String? _selectedCategory;
   bool _submitting = false;
-  XFile? _coverFile;
+  final List<_MediaUploadItem> _mediaItems = [];
   List<PlaceResult> _locationSearchResults = [];
   Timer? _locationSearchDebounce;
   bool _mapReady = false;
@@ -127,9 +157,76 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     super.dispose();
   }
 
-  Future<void> _pickCoverImage() async {
-    final file = await _picker.pickImage(source: ImageSource.gallery);
-    if (file != null) setState(() => _coverFile = file);
+  Future<void> _pickEventMedia() async {
+    if (_mediaItems.length >= _maxMediaFiles) {
+      _showError('You can upload up to $_maxMediaFiles files.');
+      return;
+    }
+
+    final file = await _picker.pickMedia();
+    if (file == null || !mounted) return;
+
+    final extension = _fileExtension(file.name);
+    if (!_allowedMediaExtensions.contains(extension)) {
+      _showError('Only JPG, PNG, MP4, and MOV files are allowed.');
+      return;
+    }
+
+    final fileSize = await File(file.path).length();
+    if (fileSize > _maxMediaSizeBytes) {
+      _showError('Each file must be 20MB or less.');
+      return;
+    }
+
+    final mediaItem = _MediaUploadItem(file: file, isUploading: true);
+    setState(() => _mediaItems.add(mediaItem));
+    await _uploadMediaItem(mediaItem);
+  }
+
+  void _removeMediaAt(int index) {
+    setState(() => _mediaItems.removeAt(index));
+  }
+
+  Future<void> _uploadMediaItem(_MediaUploadItem item) async {
+    try {
+      final mediaUrl = await _eventService.uploadMedia(item.file);
+      if (!mounted) return;
+      setState(() {
+        item.uploadedUrl = mediaUrl;
+        item.isUploading = false;
+        item.error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        item.isUploading = false;
+        item.error = '$e';
+      });
+      _showError('Failed to upload ${item.file.name}. Tap to retry.');
+    }
+  }
+
+  Future<void> _retryUploadAt(int index) async {
+    final item = _mediaItems[index];
+    if (item.isUploading) return;
+    setState(() {
+      item.isUploading = true;
+      item.error = null;
+    });
+    await _uploadMediaItem(item);
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  String _fileExtension(String fileName) {
+    final parts = fileName.toLowerCase().split('.');
+    if (parts.length < 2) return '';
+    return parts.last;
   }
 
   Future<void> _pickDateTime({required bool isStart}) async {
@@ -170,6 +267,46 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
     setState(() => _submitting = true);
     try {
+      String? coverImageUrl;
+      if (_mediaItems.length > _maxMediaFiles) {
+        throw Exception('You can upload up to $_maxMediaFiles files.');
+      }
+
+      for (final item in _mediaItems) {
+        final extension = _fileExtension(item.file.name);
+        if (!_allowedMediaExtensions.contains(extension)) {
+          throw Exception('Only JPG, PNG, MP4, and MOV files are allowed.');
+        }
+
+        final size = await File(item.file.path).length();
+        if (size > _maxMediaSizeBytes) {
+          throw Exception('Each file must be 20MB or less.');
+        }
+      }
+
+      if (_mediaItems.any((item) => item.isUploading)) {
+        throw Exception('Please wait for media uploads to finish.');
+      }
+
+      if (_mediaItems.any((item) => item.uploadedUrl == null)) {
+        throw Exception('Some media files failed to upload. Retry or remove them.');
+      }
+
+      final uploadedUrls = _mediaItems
+          .map((item) => item.uploadedUrl!)
+          .toList(growable: false);
+
+      if (_mediaItems.isNotEmpty) {
+        for (final item in _mediaItems) {
+          final ext = _fileExtension(item.file.name);
+          if (ext == 'jpg' || ext == 'jpeg' || ext == 'png') {
+            coverImageUrl = item.uploadedUrl;
+            break;
+          }
+        }
+        coverImageUrl ??= _mediaItems.first.uploadedUrl;
+      }
+
       await _eventService.createEvent(
         title: _titleCtrl.text.trim(),
         description:
@@ -180,8 +317,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         endTime: _endTime!,
         maxParticipants: int.tryParse(_maxCtrl.text) ?? 50,
         interestTag: _selectedCategory?.toLowerCase(),
+        coverImage: coverImageUrl,
+        mediaUrls: uploadedUrls,
       );
-      if (mounted) Navigator.of(context).pop(true);
+      if (!mounted) return;
+
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+      } else {
+        widget.onCreated?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Event created successfully')),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -192,26 +340,40 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (mounted) setState(() => _submitting = false);
   }
 
+  void _handleBackNavigation() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    } else {
+      widget.onCreated?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
     final dateFmt = DateFormat('EEE, MMM d · h:mm a');
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        title: Text('Create Event',
-            style: theme.textTheme.titleLarge
-                ?.copyWith(fontWeight: FontWeight.bold)),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+    return PopScope(
+      canPop: Navigator.of(context).canPop(),
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        widget.onCreated?.call();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+          title: Text('Create Event',
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.bold)),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _handleBackNavigation,
+          ),
         ),
-      ),
-      body: Form(
+        body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
@@ -221,14 +383,14 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Cover Image',
+                  Text('Event Media',
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: theme.colorScheme.onSurface)),
                   const SizedBox(height: 12),
                   GestureDetector(
-                    onTap: _pickCoverImage,
+                    onTap: _pickEventMedia,
                     child: Container(
                       height: 180,
                       decoration: BoxDecoration(
@@ -252,7 +414,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              _coverFile != null
+                              _mediaItems.isNotEmpty
                                   ? Icons.check_circle
                                   : Icons.image_outlined,
                               size: 40,
@@ -260,16 +422,87 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              _coverFile != null
-                                  ? 'Image selected'
-                                  : 'Tap to upload photo',
+                              _mediaItems.isNotEmpty
+                                  ? '${_mediaItems.length}/$_maxMediaFiles file(s) selected'
+                                  : 'Tap to upload image or video',
                               style: TextStyle(fontSize: 13, color: muted),
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Max $_maxMediaFiles files, 20MB each',
+                              style: TextStyle(fontSize: 11, color: muted),
+                            ),
+                            if (_mediaItems.any((item) => item.isUploading)) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: muted,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Uploading media...',
+                                    style: TextStyle(fontSize: 11, color: muted),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
                     ),
                   ),
+                  if (_mediaItems.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: List.generate(_mediaItems.length, (index) {
+                        final item = _mediaItems[index];
+                        return InputChip(
+                          avatar: item.isUploading
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Icon(
+                                  item.uploadedUrl != null
+                                      ? Icons.check_circle
+                                      : Icons.error,
+                                  size: 16,
+                                  color: item.uploadedUrl != null
+                                      ? Colors.green
+                                      : Colors.red,
+                                ),
+                          label: Text(
+                            item.file.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onPressed: (!item.isUploading && item.uploadedUrl == null)
+                              ? () => _retryUploadAt(index)
+                              : null,
+                          onDeleted: item.isUploading
+                              ? null
+                              : () => _removeMediaAt(index),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Tap a failed file to retry upload',
+                      style: TextStyle(fontSize: 11, color: muted),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -603,6 +836,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             const SizedBox(height: 16),
           ],
         ),
+      ),
       ),
     );
   }

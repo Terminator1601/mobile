@@ -16,12 +16,20 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
 
-  final _screens = const [
-    MapScreen(),
-    ExploreScreen(),
-    CreateEventScreen(),
-    ProfileScreen(),
-  ];
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      const MapScreen(),
+      const ExploreScreen(),
+      CreateEventScreen(
+        onCreated: () => setState(() => _currentIndex = 0),
+      ),
+      const ProfileScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {

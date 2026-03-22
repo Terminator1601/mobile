@@ -1,3 +1,6 @@
+import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../models/user.dart';
 import 'api_client.dart';
 
@@ -25,6 +28,26 @@ class UserService {
     if (profilePicture != null) data['profile_picture'] = profilePicture;
 
     final response = await _client.dio.patch('/users/me', data: data);
+    return User.fromJson(response.data);
+  }
+
+  Future<User> uploadProfilePicture(XFile file) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        file.path,
+        filename: file.name,
+      ),
+    });
+
+    final response = await _client.dio.post(
+      '/users/me/profile-picture',
+      data: formData,
+      options: Options(
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      ),
+    );
     return User.fromJson(response.data);
   }
 }
