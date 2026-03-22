@@ -1,0 +1,92 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import 'services/app_state.dart';
+import 'screens/auth_screen.dart';
+import 'screens/home_shell.dart';
+
+const kGradientPurple = Color(0xFF8B5CF6);
+const kGradientPink = Color(0xFFEC4899);
+const kGradientOrange = Color(0xFFF97316);
+const kLiveRed = Color(0xFFEF4444);
+const kUpcomingGreen = Color(0xFF10B981);
+
+const kGradient = LinearGradient(
+  colors: [kGradientPurple, kGradientPink, kGradientOrange],
+);
+const kGradientPurplePink = LinearGradient(
+  colors: [kGradientPurple, kGradientPink],
+);
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
+  );
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => AppState()..tryAutoLogin(),
+      child: const EventDiscoveryApp(),
+    ),
+  );
+}
+
+class EventDiscoveryApp extends StatelessWidget {
+  const EventDiscoveryApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final darkScheme = ColorScheme.dark(
+      primary: kGradientPurple,
+      secondary: kGradientPink,
+      tertiary: kGradientOrange,
+      surface: const Color(0xFF0A0A0F),
+      surfaceContainerHighest: const Color(0xFF1A1A24),
+      onSurface: Colors.white,
+      onSurfaceVariant: const Color(0xFF717182),
+      outline: Colors.white.withValues(alpha: 0.1),
+    );
+
+    final lightScheme = ColorScheme.light(
+      primary: kGradientPurple,
+      secondary: kGradientPink,
+      tertiary: kGradientOrange,
+      surface: Colors.white,
+      surfaceContainerHighest: const Color(0xFFECECF0),
+      onSurface: const Color(0xFF030213),
+      onSurfaceVariant: const Color(0xFF717182),
+      outline: Colors.black.withValues(alpha: 0.1),
+    );
+
+    return MaterialApp(
+      title: 'Event Discovery',
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: lightScheme,
+        scaffoldBackgroundColor: lightScheme.surface,
+        appBarTheme: AppBarTheme(
+          backgroundColor: lightScheme.surface.withValues(alpha: 0.8),
+          surfaceTintColor: Colors.transparent,
+        ),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: darkScheme,
+        scaffoldBackgroundColor: darkScheme.surface,
+        appBarTheme: AppBarTheme(
+          backgroundColor: darkScheme.surface.withValues(alpha: 0.8),
+          surfaceTintColor: Colors.transparent,
+        ),
+      ),
+      home: Consumer<AppState>(
+        builder: (context, state, _) {
+          if (state.isLoggedIn) return const HomeShell();
+          return const AuthScreen();
+        },
+      ),
+    );
+  }
+}

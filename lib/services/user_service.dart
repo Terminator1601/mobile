@@ -1,0 +1,30 @@
+import '../models/user.dart';
+import 'api_client.dart';
+
+class UserService {
+  final ApiClient _client = ApiClient();
+
+  Future<User> getMe() async {
+    final response = await _client.dio.get('/users/me');
+    return User.fromJson(response.data);
+  }
+
+  Future<User> getUser(String userId) async {
+    final response = await _client.dio.get('/users/$userId');
+    return User.fromJson(response.data);
+  }
+
+  Future<User> updateProfile({
+    String? name,
+    String? gender,
+    String? profilePicture,
+  }) async {
+    final data = <String, dynamic>{};
+    if (name != null) data['name'] = name;
+    if (gender != null) data['gender'] = gender;
+    if (profilePicture != null) data['profile_picture'] = profilePicture;
+
+    final response = await _client.dio.patch('/users/me', data: data);
+    return User.fromJson(response.data);
+  }
+}
