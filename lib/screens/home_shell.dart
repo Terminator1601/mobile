@@ -40,6 +40,18 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _currentIndex = 0);
   }
 
+  void _onTabChanged(int index) {
+    setState(() => _currentIndex = index);
+    switch (index) {
+      case 0:
+        _mapKey.currentState?.refresh();
+        break;
+      case 1:
+        _exploreKey.currentState?.refresh();
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -80,7 +92,7 @@ class _HomeShellState extends State<HomeShell> {
           final item = items[i];
           final isActive = _currentIndex == i;
           return GestureDetector(
-            onTap: () => setState(() => _currentIndex = i),
+            onTap: () => _onTabChanged(i),
             behavior: HitTestBehavior.opaque,
             child: Column(
               mainAxisSize: MainAxisSize.min,

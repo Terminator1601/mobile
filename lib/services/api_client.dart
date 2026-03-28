@@ -4,7 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class ApiClient {
   // For physical device on same Wi-Fi network as development machine
   // If using Android Emulator, change to: http://10.0.2.2:8000
-  static const String _baseUrl = 'https://explorer-backend-production-22d6.up.railway.app';
+  static const String _baseUrl = 'https://explorer-backend-g4xb.onrender.com';
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
 

@@ -19,14 +19,17 @@ const kGradientPurplePink = LinearGradient(
   colors: [kGradientPurple, kGradientPink],
 );
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
   );
+  final appState = AppState();
+  await appState.initPreferences();
+  appState.tryAutoLogin();
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => AppState()..tryAutoLogin(),
+    ChangeNotifierProvider.value(
+      value: appState,
       child: const EventDiscoveryApp(),
     ),
   );
@@ -59,10 +62,11 @@ class EventDiscoveryApp extends StatelessWidget {
       outline: Colors.black.withValues(alpha: 0.1),
     );
 
+    final state = context.watch<AppState>();
     return MaterialApp(
       title: 'Event Discovery',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark,
+      themeMode: state.themeMode,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: lightScheme,

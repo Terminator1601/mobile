@@ -4,6 +4,9 @@ class User {
   final String email;
   final String? profilePicture;
   final String gender;
+  final String? bio;
+  final List<String> interests;
+  final Map<String, String> socialLinks;
   final DateTime createdAt;
 
   User({
@@ -12,6 +15,9 @@ class User {
     required this.email,
     this.profilePicture,
     required this.gender,
+    this.bio,
+    this.interests = const [],
+    this.socialLinks = const {},
     required this.createdAt,
   });
 
@@ -22,6 +28,13 @@ class User {
       email: json['email'],
       profilePicture: json['profile_picture'],
       gender: json['gender'],
+      bio: json['bio'],
+      interests: json['interests'] != null
+          ? List<String>.from(json['interests'])
+          : [],
+      socialLinks: json['social_links'] != null
+          ? Map<String, String>.from(json['social_links'])
+          : {},
       createdAt: DateTime.parse(json['created_at']),
     );
   }
@@ -32,5 +45,8 @@ class User {
         'email': email,
         'profile_picture': profilePicture,
         'gender': gender,
+        'bio': bio,
+        'interests': interests,
+        'social_links': socialLinks,
       };
 }

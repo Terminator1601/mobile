@@ -21,11 +21,17 @@ class UserService {
     String? name,
     String? gender,
     String? profilePicture,
+    String? bio,
+    List<String>? interests,
+    Map<String, String>? socialLinks,
   }) async {
     final data = <String, dynamic>{};
     if (name != null) data['name'] = name;
     if (gender != null) data['gender'] = gender;
     if (profilePicture != null) data['profile_picture'] = profilePicture;
+    if (bio != null) data['bio'] = bio;
+    if (interests != null) data['interests'] = interests;
+    if (socialLinks != null) data['social_links'] = socialLinks;
 
     final response = await _client.dio.patch('/users/me', data: data);
     return User.fromJson(response.data);
@@ -64,9 +70,11 @@ class UserStats {
   UserStats({required this.eventsCreated, required this.eventsAttended});
 
   factory UserStats.fromJson(Map<String, dynamic> json) {
+    final totalCreated = json['total_events_created'];
+    final totalAttended = json['total_events_attended'];
     return UserStats(
-      eventsCreated: json['events_created'] ?? 0,
-      eventsAttended: json['events_attended'] ?? 0,
+      eventsCreated: (totalCreated ?? json['events_created']) ?? 0,
+      eventsAttended: (totalAttended ?? json['events_attended']) ?? 0,
     );
   }
 }
