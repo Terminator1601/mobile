@@ -19,6 +19,9 @@ class Event {
   final String? coverImage;
   final List<String> mediaUrls;
   final bool isUserParticipant;
+  final bool isBookmarked;
+  final double? averageRating;
+  final int reviewCount;
 
   Event({
     required this.id,
@@ -39,6 +42,9 @@ class Event {
     this.coverImage,
     this.mediaUrls = const [],
     this.isUserParticipant = false,
+    this.isBookmarked = false,
+    this.averageRating,
+    this.reviewCount = 0,
   });
 
   bool get isLive {
@@ -86,6 +92,11 @@ class Event {
           : (fallbackCoverImage.isNotEmpty ? fallbackCoverImage : null),
       mediaUrls: parsedMediaUrls,
       isUserParticipant: json['is_user_participant'] ?? false,
+      isBookmarked: json['is_bookmarked'] ?? false,
+      averageRating: json['average_rating'] != null
+          ? (json['average_rating'] as num).toDouble()
+          : null,
+      reviewCount: json['review_count'] ?? 0,
     );
   }
 

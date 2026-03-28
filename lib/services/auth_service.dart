@@ -32,6 +32,9 @@ class AuthService {
     });
     final auth = AuthResponse.fromJson(response.data);
     await _client.saveToken(auth.accessToken);
+    if (auth.refreshToken.isNotEmpty) {
+      await _client.saveRefreshToken(auth.refreshToken);
+    }
     return auth;
   }
 

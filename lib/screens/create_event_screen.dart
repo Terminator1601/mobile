@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../main.dart';
+import '../models/event.dart';
 import '../models/place_result.dart';
 import '../services/event_service.dart';
 import '../services/geocoding_service.dart';
@@ -46,11 +47,13 @@ class _MediaUploadItem {
 class CreateEventScreen extends StatefulWidget {
   final LatLng? initialPosition;
   final VoidCallback? onCreated;
+  final Event? editingEvent;
 
   const CreateEventScreen({
     super.key,
     this.initialPosition,
     this.onCreated,
+    this.editingEvent,
   });
 
   @override
@@ -81,12 +84,28 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   bool _mapReady = false;
   int _reverseLookupToken = 0;
 
+  bool get _isEditing => widget.editingEvent != null;
+
   @override
   void initState() {
     super.initState();
-    _pickedLocation =
-        widget.initialPosition ?? const LatLng(37.7749, -122.4194);
-    _resolveLocation();
+    if (_isEditing) {
+      final ev = widget.editingEvent!;
+      _pickedLocation = LatLng(ev.latitude, ev.longitude);
+      _titleCtrl.text = ev.title;
+      _descCtrl.text = ev.description ?? '';
+      _maxCtrl.text = ev.maxParticipants.toString();
+      _startTime = ev.startTime;
+      _endTime = ev.endTime;
+      if (ev.interestTag != null) {
+        _selectedCategory = ev.interestTag!.substring(0, 1).toUpperCase() +
+            ev.interestTag!.substring(1);
+      }
+    } else {
+      _pickedLocation =
+          widget.initialPosition ?? const LatLng(37.7749, -122.4194);
+      _resolveLocation();
+    }
   }
 
   Future<void> _resolveLocation() async {
@@ -320,19 +339,35 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         coverImageUrl ??= _mediaItems.first.uploadedUrl;
       }
 
-      await _eventService.createEvent(
-        title: _titleCtrl.text.trim(),
-        description:
-            _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
-        latitude: _pickedLocation.latitude,
-        longitude: _pickedLocation.longitude,
-        startTime: _startTime!,
-        endTime: _endTime!,
-        maxParticipants: int.tryParse(_maxCtrl.text) ?? 50,
-        interestTag: _selectedCategory?.toLowerCase(),
-        coverImage: coverImageUrl,
-        mediaUrls: uploadedUrls,
-      );
+      if (_isEditing) {
+        await _eventService.updateEvent(widget.editingEvent!.id, {
+          'title': _titleCtrl.text.trim(),
+          'description':
+              _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+          'latitude': _pickedLocation.latitude,
+          'longitude': _pickedLocation.longitude,
+          'start_time': _startTime!.toUtc().toIso8601String(),
+          'end_time': _endTime!.toUtc().toIso8601String(),
+          'max_participants': int.tryParse(_maxCtrl.text) ?? 50,
+          'interest_tag': _selectedCategory?.toLowerCase(),
+          if (coverImageUrl != null) 'cover_image': coverImageUrl,
+          if (uploadedUrls.isNotEmpty) 'media_urls': uploadedUrls,
+        });
+      } else {
+        await _eventService.createEvent(
+          title: _titleCtrl.text.trim(),
+          description:
+              _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+          latitude: _pickedLocation.latitude,
+          longitude: _pickedLocation.longitude,
+          startTime: _startTime!,
+          endTime: _endTime!,
+          maxParticipants: int.tryParse(_maxCtrl.text) ?? 50,
+          interestTag: _selectedCategory?.toLowerCase(),
+          coverImage: coverImageUrl,
+          mediaUrls: uploadedUrls,
+        );
+      }
       if (!mounted) return;
 
       if (Navigator.of(context).canPop()) {
@@ -378,7 +413,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           centerTitle: true,
-          title: Text('Create Event',
+          title: Text(_isEditing ? 'Edit Event' : 'Create Event',
               style: theme.textTheme.titleLarge
                   ?.copyWith(fontWeight: FontWeight.bold)),
           leading: IconButton(
@@ -842,7 +877,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             const SizedBox(height: 24),
 
             GradientButton(
-              label: 'Create Event',
+              label: _isEditing ? 'Update Event' : 'Create Event',
               isLoading: _submitting,
               onPressed: _submit,
             ),

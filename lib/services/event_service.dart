@@ -135,4 +135,34 @@ class EventService {
   Future<void> joinEvent(String eventId) async {
     await _client.dio.post('/events/$eventId/join');
   }
+
+  Future<void> leaveEvent(String eventId) async {
+    await _client.dio.delete('/events/$eventId/join');
+  }
+
+  Future<Event> updateEvent(String eventId, Map<String, dynamic> data) async {
+    final response = await _client.dio.patch('/events/$eventId', data: data);
+    return Event.fromJson(response.data);
+  }
+
+  Future<void> deleteEvent(String eventId) async {
+    await _client.dio.delete('/events/$eventId');
+  }
+
+  Future<bool> toggleBookmark(String eventId) async {
+    final response = await _client.dio.post('/events/$eventId/bookmark');
+    return response.data['bookmarked'] ?? false;
+  }
+
+  Future<List<Event>> getRecommendedEvents({
+    required double lat,
+    required double lng,
+    double radius = 50000,
+  }) async {
+    final response = await _client.dio.get('/events/recommended',
+        queryParameters: {'lat': lat, 'lng': lng, 'radius': radius});
+    return (response.data as List)
+        .map((json) => Event.fromJson(json))
+        .toList();
+  }
 }

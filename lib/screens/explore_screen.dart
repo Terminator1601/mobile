@@ -10,6 +10,7 @@ import '../widgets/category_chips.dart';
 import '../widgets/event_card.dart';
 import '../widgets/avatar_stack.dart';
 import '../widgets/filter_bottom_sheet.dart';
+import '../widgets/skeleton_card.dart';
 import 'event_detail_screen.dart';
 
 const _categories = [
@@ -182,8 +183,9 @@ class ExploreScreenState extends State<ExploreScreen> {
                 ),
               ),
               if (_loading)
-                const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverToBoxAdapter(child: SkeletonList(count: 4)),
                 )
               else
                 SliverPadding(

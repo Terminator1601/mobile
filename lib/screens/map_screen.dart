@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -278,7 +279,12 @@ class MapScreenState extends State<MapScreen> {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              urlTemplate: Theme.of(context).brightness == Brightness.dark
+                  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                  : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              subdomains: Theme.of(context).brightness == Brightness.dark
+                  ? const ['a', 'b', 'c', 'd']
+                  : const [],
               userAgentPackageName: 'com.example.event_discovery',
             ),
             if (_currentPosition != null)
@@ -297,10 +303,34 @@ class MapScreenState extends State<MapScreen> {
                   ),
                 ],
               ),
-            MarkerLayer(markers: [
-              ..._markers,
-              if (_searchMarker != null) _searchMarker!,
-            ]),
+            MarkerClusterLayerWidget(
+              options: MarkerClusterLayerOptions(
+                maxClusterRadius: 80,
+                size: const Size(44, 44),
+                markers: [
+                  ..._markers,
+                  if (_searchMarker != null) _searchMarker!,
+                ],
+                builder: (context, markers) {
+                  return Container(
+                    decoration: const BoxDecoration(
+                      gradient: kGradientPurplePink,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${markers.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
             if (_currentPosition != null)
               MarkerLayer(
                 markers: [

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'services/app_state.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_shell.dart';
+import 'screens/onboarding_screen.dart';
 
 const kGradientPurple = Color(0xFF8B5CF6);
 const kGradientPink = Color(0xFFEC4899);
@@ -85,12 +87,52 @@ class EventDiscoveryApp extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
         ),
       ),
-      home: Consumer<AppState>(
-        builder: (context, state, _) {
-          if (state.isLoggedIn) return const HomeShell();
-          return const AuthScreen();
-        },
-      ),
+      home: const _AppHome(),
+    );
+  }
+}
+
+class _AppHome extends StatefulWidget {
+  const _AppHome();
+
+  @override
+  State<_AppHome> createState() => _AppHomeState();
+}
+
+class _AppHomeState extends State<_AppHome> {
+  bool? _onboardingComplete;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOnboarding();
+  }
+
+  Future<void> _checkOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(
+          () => _onboardingComplete = prefs.getBool('onboarding_complete') ?? false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_onboardingComplete == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (!_onboardingComplete!) {
+      return OnboardingScreen(
+        onComplete: () => setState(() => _onboardingComplete = true),
+      );
+    }
+
+    return Consumer<AppState>(
+      builder: (context, state, _) {
+        if (state.isLoggedIn) return const HomeShell();
+        return const AuthScreen();
+      },
     );
   }
 }

@@ -28,17 +28,20 @@ class EventCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: event.coverImage != null
-                  ? Image.network(
-                      event.coverImage!,
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _imagePlaceholder(),
-                    )
-                  : _imagePlaceholder(),
+            Hero(
+              tag: 'event-${event.id}',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: event.coverImage != null
+                    ? Image.network(
+                        event.coverImage!,
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _imagePlaceholder(),
+                      )
+                    : _imagePlaceholder(),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -104,6 +107,13 @@ class EventCard extends StatelessWidget {
                         '${event.participantCount}/${event.maxParticipants}',
                         style: TextStyle(fontSize: 11, color: muted),
                       ),
+                      if (event.averageRating != null) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.star, size: 12, color: Colors.amber),
+                        const SizedBox(width: 2),
+                        Text('${event.averageRating}',
+                            style: TextStyle(fontSize: 11, color: muted)),
+                      ],
                     ],
                   ),
                 ],

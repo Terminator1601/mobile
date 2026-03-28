@@ -2,14 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../main.dart';
 import '../models/event.dart';
+import '../models/comment.dart';
+import '../services/app_state.dart';
 import '../services/event_service.dart';
+import '../services/comment_service.dart';
 import '../widgets/glass_card.dart';
 import '../widgets/gradient_button.dart';
 import '../widgets/avatar_stack.dart';
+import 'create_event_screen.dart';
+import 'chat_screen.dart';
+import 'user_profile_screen.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final String eventId;
@@ -21,9 +29,17 @@ class EventDetailScreen extends StatefulWidget {
 
 class _EventDetailScreenState extends State<EventDetailScreen> {
   final EventService _eventService = EventService();
+  final CommentService _commentService = CommentService();
   Event? _event;
   bool _loading = true;
   bool _joining = false;
+  bool _leaving = false;
+  bool _bookmarking = false;
+  bool _isBookmarked = false;
+
+  List<Comment> _comments = [];
+  final TextEditingController _commentCtrl = TextEditingController();
+  bool _postingComment = false;
 
   @override
   void initState() {
@@ -31,10 +47,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
       _event = await _eventService.getEvent(widget.eventId);
+      _isBookmarked = _event?.isBookmarked ?? false;
+      await _loadComments();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -42,6 +66,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadComments() async {
+    try {
+      _comments = await _commentService.getComments(widget.eventId);
+    } catch (_) {}
+    if (mounted) setState(() {});
   }
 
   Future<void> _openDirections() async {
@@ -79,6 +110,155 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
     }
     if (mounted) setState(() => _joining = false);
+  }
+
+  Future<void> _leave() async {
+    setState(() => _leaving = true);
+    try {
+      await _eventService.leaveEvent(widget.eventId);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Left the event')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+    if (mounted) setState(() => _leaving = false);
+  }
+
+  Future<void> _toggleBookmark() async {
+    if (_bookmarking) return;
+    setState(() => _bookmarking = true);
+    try {
+      final result = await _eventService.toggleBookmark(widget.eventId);
+      setState(() => _isBookmarked = result);
+    } catch (_) {}
+    if (mounted) setState(() => _bookmarking = false);
+  }
+
+  void _share() {
+    if (_event == null) return;
+    SharePlus.instance.share(
+      ShareParams(
+        text: 'Check out this event: ${_event!.title}\nhttps://eventexplorer.app/events/${_event!.id}',
+      ),
+    );
+  }
+
+  Future<void> _postComment() async {
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty) return;
+    setState(() => _postingComment = true);
+    try {
+      await _commentService.createComment(widget.eventId, text);
+      _commentCtrl.clear();
+      await _loadComments();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+    if (mounted) setState(() => _postingComment = false);
+  }
+
+  void _openChat() {
+    if (_event == null) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        eventId: widget.eventId,
+        eventTitle: _event!.title,
+      ),
+    ));
+  }
+
+  bool get _isCreator {
+    final user = context.read<AppState>().currentUser;
+    return user != null && _event != null && _event!.createdBy == user.id;
+  }
+
+  void _showCreatorMenu() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Edit Event'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _editEvent();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title:
+                  const Text('Delete Event', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDelete();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _editEvent() async {
+    if (_event == null) return;
+    final result = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => CreateEventScreen(editingEvent: _event),
+    ));
+    if (result == true) _load();
+  }
+
+  void _confirmDelete() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Event'),
+        content: const Text('Are you sure you want to delete this event? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await _eventService.deleteEvent(widget.eventId);
+                if (mounted) Navigator.of(context).pop(true);
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openCreatorProfile() {
+    if (_event?.creator == null) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => UserProfileScreen(userId: _event!.creator!.id),
+    ));
   }
 
   @override
@@ -121,34 +301,47 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (ev.interestTag != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 5),
-                                margin: const EdgeInsets.only(bottom: 12),
-                                decoration: BoxDecoration(
-                                  gradient: kGradientPurplePink,
-                                  borderRadius: BorderRadius.circular(100),
-                                ),
-                                child: Text(ev.interestTag!,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600)),
-                              ),
+                            Row(
+                              children: [
+                                if (ev.interestTag != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 5),
+                                    margin: const EdgeInsets.only(right: 8),
+                                    decoration: BoxDecoration(
+                                      gradient: kGradientPurplePink,
+                                      borderRadius: BorderRadius.circular(100),
+                                    ),
+                                    child: Text(ev.interestTag!,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600)),
+                                  ),
+                                if (ev.averageRating != null)
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.star, color: Colors.amber, size: 16),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        '${ev.averageRating} (${ev.reviewCount})',
+                                        style: TextStyle(fontSize: 12, color: muted),
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
 
                             Text(ev.title,
                                 style: theme.textTheme.headlineSmall
-                                    ?.copyWith(
-                                        fontWeight: FontWeight.bold)),
+                                    ?.copyWith(fontWeight: FontWeight.bold)),
                             const SizedBox(height: 14),
 
                             _infoRow(Icons.calendar_today,
-                                dateFmt.format(ev.startTime.toLocal()),
-                                muted),
+                                dateFmt.format(ev.startTime.toLocal()), muted),
                             _infoRow(Icons.access_time,
-                                timeFmt.format(ev.startTime.toLocal()),
-                                muted),
+                                timeFmt.format(ev.startTime.toLocal()), muted),
                             if (ev.distanceMeters != null)
                               _infoRow(
                                   Icons.place,
@@ -160,8 +353,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             const SizedBox(height: 16),
 
                             Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text('Participants',
                                     style: TextStyle(
@@ -170,15 +362,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                         color: muted)),
                                 Text(
                                     '${ev.participantCount} / ${ev.maxParticipants}',
-                                    style: TextStyle(
-                                        fontSize: 13, color: muted)),
+                                    style: TextStyle(fontSize: 13, color: muted)),
                               ],
                             ),
                             const SizedBox(height: 10),
-                            AvatarStack(
-                                totalCount: ev.participantCount,
-                                max: 8,
-                                size: 36),
+                            AvatarStack(totalCount: ev.participantCount, max: 8, size: 36),
                             const SizedBox(height: 14),
 
                             ClipRRect(
@@ -186,58 +374,68 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                               child: LinearProgressIndicator(
                                 value: fillPct,
                                 minHeight: 8,
-                                backgroundColor:
-                                    theme.colorScheme.surfaceContainerHighest,
-                                valueColor:
-                                    const AlwaysStoppedAnimation<Color>(
-                                        kGradientPurple),
+                                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                                valueColor: const AlwaysStoppedAnimation<Color>(kGradientPurple),
                               ),
                             ),
                             const SizedBox(height: 16),
 
                             if (ev.creator != null)
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme
-                                      .surfaceContainerHighest
-                                      .withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 24,
-                                      backgroundImage:
-                                          ev.creator!.profilePicture !=
-                                                  null
-                                              ? NetworkImage(ev.creator!
-                                                  .profilePicture!)
-                                              : null,
-                                      child:
-                                          ev.creator!.profilePicture ==
-                                                  null
-                                              ? const Icon(Icons.person)
-                                              : null,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Hosted by',
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                color: muted)),
-                                        Text(ev.creator!.name,
-                                            style: const TextStyle(
-                                                fontWeight:
-                                                    FontWeight.w600)),
-                                      ],
-                                    ),
-                                  ],
+                              GestureDetector(
+                                onTap: _openCreatorProfile,
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.surfaceContainerHighest
+                                        .withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 24,
+                                        backgroundImage:
+                                            ev.creator!.profilePicture != null
+                                                ? NetworkImage(ev.creator!.profilePicture!)
+                                                : null,
+                                        child: ev.creator!.profilePicture == null
+                                            ? const Icon(Icons.person)
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Hosted by',
+                                              style: TextStyle(fontSize: 11, color: muted)),
+                                          Text(ev.creator!.name,
+                                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
+
+                            if (ev.isUserParticipant) ...[
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _openChat,
+                                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                                  label: const Text('Event Chat'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: kGradientPurple,
+                                    side: BorderSide(color: kGradientPurple.withValues(alpha: 0.5)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -251,14 +449,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             children: [
                               Text('About',
                                   style: theme.textTheme.titleSmall
-                                      ?.copyWith(
-                                          fontWeight: FontWeight.w600)),
+                                      ?.copyWith(fontWeight: FontWeight.w600)),
                               const SizedBox(height: 8),
                               Text(ev.description!,
                                   style: TextStyle(
-                                      fontSize: 14,
-                                      color: muted,
-                                      height: 1.6)),
+                                      fontSize: 14, color: muted, height: 1.6)),
                             ],
                           ),
                         ),
@@ -309,8 +504,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                     ),
                                     children: [
                                       TileLayer(
-                                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                        userAgentPackageName: 'com.example.event_discovery',
+                                        urlTemplate:
+                                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                        userAgentPackageName:
+                                            'com.example.event_discovery',
                                       ),
                                       MarkerLayer(
                                         markers: [
@@ -318,7 +515,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                             point: LatLng(ev.latitude, ev.longitude),
                                             width: 40,
                                             height: 40,
-                                            child: const Icon(Icons.location_pin, color: Colors.red, size: 40),
+                                            child: const Icon(Icons.location_pin,
+                                                color: Colors.red, size: 40),
                                           ),
                                         ],
                                       ),
@@ -349,6 +547,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           ],
                         ),
                       ),
+
+                      const SizedBox(height: 16),
+                      _buildCommentsSection(theme, muted),
                     ],
                   ),
                 ),
@@ -363,6 +564,100 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
+  Widget _buildCommentsSection(ThemeData theme, Color muted) {
+    final user = context.watch<AppState>().currentUser;
+    final relFmt = DateFormat('MMM d, h:mm a');
+
+    return GlassCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Comments (${_comments.length})',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          if (user != null)
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _commentCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Add a comment...',
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: theme.colorScheme.outline),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: theme.colorScheme.outline),
+                      ),
+                    ),
+                    maxLines: 1,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _postingComment
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : IconButton(
+                        icon: const Icon(Icons.send, color: kGradientPurple),
+                        onPressed: _postComment,
+                      ),
+              ],
+            ),
+          if (_comments.isNotEmpty) const SizedBox(height: 12),
+          ..._comments.map((c) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundImage: c.user.profilePicture != null
+                          ? NetworkImage(c.user.profilePicture!)
+                          : null,
+                      child: c.user.profilePicture == null
+                          ? const Icon(Icons.person, size: 14)
+                          : null,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(c.user.name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12)),
+                              const SizedBox(width: 6),
+                              Text(relFmt.format(c.createdAt.toLocal()),
+                                  style: TextStyle(
+                                      fontSize: 10, color: muted)),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(c.text, style: const TextStyle(fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
   Widget _heroImage(Event ev, ThemeData theme) {
     final height = MediaQuery.of(context).size.height * 0.38;
     return SizedBox(
@@ -371,8 +666,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         fit: StackFit.expand,
         children: [
           ev.coverImage != null
-              ? Image.network(ev.coverImage!, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _heroPlaceholder())
+              ? Hero(
+                  tag: 'event-${ev.id}',
+                  child: Image.network(ev.coverImage!, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _heroPlaceholder()),
+                )
               : _heroPlaceholder(),
           Container(
             decoration: BoxDecoration(
@@ -427,9 +725,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 _circleButton(Icons.arrow_back, () => Navigator.pop(context)),
                 Row(
                   children: [
-                    _circleButton(Icons.share, () {}),
+                    _circleButton(Icons.share, _share),
                     const SizedBox(width: 8),
-                    _circleButton(Icons.bookmark_border, () {}),
+                    _circleButton(
+                      _isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                      _toggleBookmark,
+                    ),
+                    if (_isCreator) ...[
+                      const SizedBox(width: 8),
+                      _circleButton(Icons.more_vert, _showCreatorMenu),
+                    ],
                   ],
                 ),
               ],
@@ -463,11 +768,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         borderRadius: BorderRadius.circular(14),
         child: AspectRatio(
           aspectRatio: 16 / 9,
-          child: Image.network(
-            url,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _mediaErrorTile(theme),
-          ),
+          child: Image.network(url, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _mediaErrorTile(theme)),
         ),
       );
     }
@@ -493,13 +795,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             const Icon(Icons.play_circle_fill, size: 36, color: Colors.white),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                'Video uploaded. Tap to play',
-                style: TextStyle(
-                  color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: Text('Video uploaded. Tap to play',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  )),
             ),
           ],
         ),
@@ -509,14 +809,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   Widget _mediaErrorTile(ThemeData theme) {
     return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-      ),
+      decoration:
+          BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
       child: Center(
-        child: Text(
-          'Unable to load media',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-        ),
+        child: Text('Unable to load media',
+            style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
       ),
     );
   }
@@ -576,12 +873,47 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ),
           ),
         ),
-        child: GradientButton(
-          label: isJoined ? 'Joined' : 'Join Event',
-          icon: isJoined ? Icons.check_circle : null,
-          isLoading: _joining,
-          onPressed: isJoined ? null : _join,
-        ),
+        child: isJoined
+            ? Row(
+                children: [
+                  Expanded(
+                    child: GradientButton(
+                      label: 'Joined',
+                      icon: Icons.check_circle,
+                      onPressed: null,
+                    ),
+                  ),
+                  if (!_isCreator) ...[
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 120,
+                      child: OutlinedButton(
+                        onPressed: _leaving ? null : _leave,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(100),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: _leaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.red))
+                            : const Text('Leave'),
+                      ),
+                    ),
+                  ],
+                ],
+              )
+            : GradientButton(
+                label: 'Join Event',
+                isLoading: _joining,
+                onPressed: _join,
+              ),
       ),
     );
   }
