@@ -36,6 +36,19 @@ class EventService {
         .toList();
   }
 
+  Future<List<Event>> getAllEvents({int limit = 50, int offset = 0}) async {
+    final params = <String, dynamic>{
+      'limit': limit,
+      'offset': offset,
+    };
+
+    final response =
+        await _client.dio.get('/events/all', queryParameters: params);
+    return (response.data as List)
+        .map((json) => Event.fromJson(json))
+        .toList();
+  }
+
   Future<Event> getEvent(String eventId) async {
     final response = await _client.dio.get('/events/$eventId');
     return Event.fromJson(response.data);
