@@ -11,6 +11,7 @@ import '../widgets/event_card.dart';
 import '../widgets/avatar_stack.dart';
 import '../widgets/filter_bottom_sheet.dart';
 import '../widgets/skeleton_card.dart';
+import 'all_events_screen.dart';
 import 'event_detail_screen.dart';
 
 const _categories = [
@@ -173,12 +174,49 @@ class ExploreScreenState extends State<ExploreScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-                  child: Text(
-                    _selectedCategory == 'All'
-                        ? 'All Events'
-                        : '$_selectedCategory Events',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _selectedCategory == 'All'
+                              ? 'All Events'
+                              : '$_selectedCategory Events',
+                          style: theme.textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const AllEventsScreen(),
+                          ));
+                        },
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'View all',
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: kGradientPurple,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: kGradientPurple,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
